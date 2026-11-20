@@ -1,0 +1,7 @@
+# Run from the project root. The SDK wheels pin grpcio/protobuf dependencies.
+numpy==1.26.4
+onnx==1.16.2
+onnxruntime==1.19.2
+pygame==2.6.1
+./droidup_api-1.0.0-py3-none-any.whl
+./droidup_client-1.0.0-py3-none-any.whl
