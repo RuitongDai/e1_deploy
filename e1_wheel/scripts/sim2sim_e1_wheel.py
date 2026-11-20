@@ -44,6 +44,7 @@ from e1_wheel.wheel_config import (
     action_targets,
     build_observation,
     finite_vector,
+    limit_command_rate,
 )
 
 
@@ -219,6 +220,7 @@ class WheelSimulation:
     def start_stand(self):
         self.interpolation_start = self.data.qpos[self.q_indices[:16]].copy()
         self.interpolation_time = 0.0
+        self.command.fill(0.0)
         self.previous_action.fill(0.0)
         self.set_servos()
         self.state = ControlState.GO_TO_DEFAULT
@@ -243,7 +245,9 @@ class WheelSimulation:
             self.enter_damping()
             self.state = ControlState.EXIT
             raise
-        self.command = np.clip(command, -COMMAND_LIMIT, COMMAND_LIMIT)
+        if self.state is ControlState.INFERENCE:
+            target_command = np.clip(command, -COMMAND_LIMIT, COMMAND_LIMIT)
+            self.command = limit_command_rate(self.command, target_command)
         now = time.monotonic()
         if events or (self.args.gamepad_debug and now - self.last_input_log >= 0.2):
             velocity = self.base_velocity()
@@ -275,6 +279,7 @@ class WheelSimulation:
             self.start_stand()
         elif "start" in events:
             if self.state is ControlState.STANDBY:
+                self.command.fill(0.0)
                 self.previous_action.fill(0.0)
                 self.state = ControlState.INFERENCE
                 print("[STATE] INFERENCE")

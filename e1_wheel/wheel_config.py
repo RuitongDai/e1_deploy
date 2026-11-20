@@ -33,23 +33,39 @@ BASE_HEIGHT = 0.46
 DEFAULT_Q = np.array([0.5, 0.0, 0.0, -1.0] * 4 + [0.0] * 4, dtype=np.float64)
 ACTION_SCALE = np.array([0.25, 0.125, 0.125, 0.25] * 4 + [5.0] * 4)
 KP = np.array([
-    [60.0, 40.0, 30.0, 60.0],  # 前右腿 FR
-    [60.0, 40.0, 30.0, 60.0],  # 前左腿 FL
-    [60.0, 40.0, 30.0, 60.0],  # 后右腿 RR
-    [60.0, 40.0, 30.0, 60.0],  # 后左腿 RL
+    [60.0, 50.0, 30.0, 60.0],  # 前右腿 FR
+    [60.0, 50.0, 30.0, 60.0],  # 前左腿 FL
+    [60.0, 50.0, 30.0, 60.0],  # 后右腿 RR
+    [60.0, 50.0, 30.0, 60.0],  # 后左腿 RL
     [0.0, 0.0, 0.0, 0.0],  # 四个轮子
 ]).reshape(-1)
 
 KD = np.array([
-    [3.0, 2.0, 1.5, 3.0],  # 前右腿 FR
-    [3.0, 2.0, 1.5, 3.0],  # 前左腿 FL
-    [3.0, 2.0, 1.5, 3.0],  # 后右腿 RR
-    [3.0, 2.0, 1.5, 3.0],  # 后左腿 RL
+    [3.0, 2.5, 1.5, 3.0],  # 前右腿 FR
+    [3.0, 2.5, 1.5, 3.0],  # 前左腿 FL
+    [3.0, 2.5, 1.5, 3.0],  # 后右腿 RR
+    [3.0, 2.5, 1.5, 3.0],  # 后左腿 RL
     [0.5, 0.5, 0.5, 0.5],  # 四个轮子
 ]).reshape(-1)
 EFFORT_LIMIT = np.array([60.0, 36.0, 15.0, 60.0] * 4 + [60.0] * 4)
 VELOCITY_LIMIT = np.array([13.09, 13.61, 15.71, 13.09] * 4 + [13.09] * 4)
 COMMAND_LIMIT = np.ones(3)
+COMMAND_RATE_LIMIT_ENABLED = False
+# Per-second command changes for vx, vy (m/s²) and wz (rad/s²).
+COMMAND_ACCEL_LIMIT = np.array([100, 100, 100])
+COMMAND_DECEL_LIMIT = np.array([2.0, 2.0, 2.0])
+
+
+def limit_command_rate(current: np.ndarray, target: np.ndarray) -> np.ndarray:
+    """Limit command changes per axis, stopping at zero before reversing."""
+    if not COMMAND_RATE_LIMIT_ENABLED:
+        return target
+
+    next_target = np.where(current * target < 0.0, 0.0, target)
+    speeding_up = np.abs(next_target) > np.abs(current)
+    rate_limit = np.where(speeding_up, COMMAND_ACCEL_LIMIT, COMMAND_DECEL_LIMIT)
+    max_step = rate_limit * POLICY_DT
+    return current + np.clip(next_target - current, -max_step, max_step)
 
 
 def finite_vector(value, size: int, label: str) -> np.ndarray:

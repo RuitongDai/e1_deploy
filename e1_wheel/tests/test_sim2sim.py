@@ -3,10 +3,12 @@
 import contextlib
 import io
 import unittest
+from unittest.mock import patch
 
 import mujoco
 import numpy as np
 
+from e1_wheel import wheel_config
 from e1_wheel.gamepad import GamepadDisconnected
 from e1_wheel.scripts.sim2sim_e1_wheel import (
     ControlState,
@@ -20,6 +22,7 @@ from e1_wheel.wheel_config import (
     KD,
     KP,
     LEG_JOINT_NAMES,
+    POLICY_DT,
     POLICY_PATH,
     action_targets,
     build_observation,
@@ -162,12 +165,60 @@ class SimulatorTests(unittest.TestCase):
         self.assertEqual(sim.state, ControlState.INFERENCE)
         self.assertEqual(sim.total_policy_steps, 1)
 
-    def test_commands_only_come_from_gamepad(self):
+    @patch.multiple(
+        wheel_config,
+        COMMAND_RATE_LIMIT_ENABLED=True,
+        COMMAND_ACCEL_LIMIT=np.array([0.5, 0.6, 0.4]),
+        COMMAND_DECEL_LIMIT=np.array([1.0, 1.2, 0.8]),
+    )
+    def test_gamepad_command_ramps_up_reverses_and_returns_to_zero(self):
         sim = self.sim
-        self.gamepad.command[:] = [0.5, -0.2, 0.3]
+        target = np.array([0.5, -0.2, 0.3])
+        self.gamepad.command[:] = target
         sim.state = ControlState.INFERENCE
         sim.update()
-        np.testing.assert_allclose(sim.observation()[6:9], self.gamepad.command)
+        accel_step = wheel_config.COMMAND_ACCEL_LIMIT * POLICY_DT
+        decel_step = wheel_config.COMMAND_DECEL_LIMIT * POLICY_DT
+        np.testing.assert_allclose(
+            sim.observation()[6:9], np.clip(target, -accel_step, accel_step)
+        )
+        accel_ticks = int(np.ceil(np.max(np.abs(target) / accel_step)))
+        decel_ticks = int(np.ceil(np.max(np.abs(target) / decel_step)))
+        for _ in range(accel_ticks):
+            sim.update()
+        np.testing.assert_allclose(sim.observation()[6:9], target)
+
+        self.gamepad.command[:] = -target
+        sim.update()
+        expected = target + np.clip(-target, -decel_step, decel_step)
+        np.testing.assert_allclose(sim.observation()[6:9], expected)
+        reached_zero = sim.command == 0.0
+        for _ in range(accel_ticks + decel_ticks):
+            sim.update()
+            reached_zero |= sim.command == 0.0
+        self.assertTrue(reached_zero.all())
+        np.testing.assert_allclose(sim.observation()[6:9], -target)
+
+        self.gamepad.command.fill(0.0)
+        sim.update()
+        expected = -target + np.clip(target, -decel_step, decel_step)
+        np.testing.assert_allclose(sim.observation()[6:9], expected)
+        for _ in range(decel_ticks):
+            sim.update()
+        np.testing.assert_array_equal(sim.observation()[6:9], 0.0)
+
+    @patch.object(wheel_config, "COMMAND_RATE_LIMIT_ENABLED", False)
+    def test_disabled_command_rate_limit_passes_target_directly(self):
+        sim = self.sim
+        sim.state = ControlState.INFERENCE
+        self.gamepad.command[2] = 0.5
+        sim.update()
+        np.testing.assert_array_equal(sim.observation()[6:9], [0.0, 0.0, 0.5])
+
+        self.gamepad.command[2] = -0.5
+        sim.update()
+        np.testing.assert_array_equal(sim.observation()[6:9], [0.0, 0.0, -0.5])
+
         self.gamepad.command.fill(0.0)
         sim.update()
         np.testing.assert_array_equal(sim.observation()[6:9], 0.0)

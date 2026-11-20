@@ -36,6 +36,7 @@ from e1_wheel.wheel_config import (
     action_targets,
     build_observation,
     finite_vector,
+    limit_command_rate,
 )
 
 LEG_COUNT = len(LEG_JOINT_NAMES)
@@ -140,6 +141,7 @@ def run(upper, lower, gamepad, session, input_name, config, imu_to_body):
     command_scale = finite_vector(config["command_scale"], 3, "command scale")
     stand_duration = config["stand_duration_s"]
     neutral = DEFAULT_Q.copy()
+    command = np.zeros(3)
     previous_action = np.zeros(ACTION_SIZE)
     state = "idle"
     wrote = False
@@ -162,6 +164,7 @@ def run(upper, lower, gamepad, session, input_name, config, imu_to_body):
                 state = "standing"
                 print("[STATE] STANDING")
             elif "start" in events and state == "standby":
+                command.fill(0.0)
                 previous_action.fill(0.0)
                 state = "inference"
                 print("[STATE] INFERENCE")
@@ -175,7 +178,8 @@ def run(upper, lower, gamepad, session, input_name, config, imu_to_body):
                     state = "standby"
                     print("[STATE] STANDBY")
             elif state == "inference":
-                command = np.clip(stick * command_scale, -COMMAND_LIMIT, COMMAND_LIMIT)
+                target_command = np.clip(stick * command_scale, -COMMAND_LIMIT, COMMAND_LIMIT)
+                command = limit_command_rate(command, target_command)
                 obs = build_observation(gyro, gravity, command, q, dq, previous_action)
                 previous_action = infer(session, input_name, obs)
                 targets = action_targets(previous_action)
