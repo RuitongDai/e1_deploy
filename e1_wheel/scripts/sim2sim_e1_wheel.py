@@ -21,7 +21,7 @@ import numpy as np
 import onnxruntime as ort
 
 if __package__ in (None, ""):
-    sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+    sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
 from e1_wheel.build_mujoco_scene import build_scene
 from e1_wheel.gamepad import Gamepad, GamepadDisconnected, monitor

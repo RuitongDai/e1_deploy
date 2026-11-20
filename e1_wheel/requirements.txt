@@ -1,5 +1,0 @@
-numpy==1.26.4
-onnxruntime==1.19.2
-mujoco==3.3.7
-# Required for the gamepad-only control interface, including headless mode.
-pygame==2.6.1

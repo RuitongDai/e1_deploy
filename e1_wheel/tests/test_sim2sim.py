@@ -8,7 +8,7 @@ import mujoco
 import numpy as np
 
 from e1_wheel.gamepad import GamepadDisconnected
-from e1_wheel.sim2sim_e1_wheel import (
+from e1_wheel.scripts.sim2sim_e1_wheel import (
     ControlState,
     OnnxPolicy,
     WheelSimulation,
@@ -17,6 +17,9 @@ from e1_wheel.sim2sim_e1_wheel import (
 from e1_wheel.wheel_config import (
     DEFAULT_Q,
     JOINT_NAMES,
+    KD,
+    KP,
+    LEG_JOINT_NAMES,
     POLICY_PATH,
     action_targets,
     build_observation,
@@ -98,11 +101,13 @@ class SimulatorTests(unittest.TestCase):
         sim = self.sim
         native_names = [sim.model.joint(int(j)).name for j in sim.joint_ids]
         self.assertEqual(tuple(native_names), JOINT_NAMES)
+        leg_count = len(LEG_JOINT_NAMES)
         np.testing.assert_array_equal(
-            sim.model.actuator_gainprm[sim.actuator_ids, 0], [50] * 16 + [0.5] * 4
+            sim.model.actuator_gainprm[sim.actuator_ids, 0],
+            np.concatenate((KP[:leg_count], KD[leg_count:])),
         )
         np.testing.assert_array_equal(
-            sim.model.actuator_biasprm[sim.actuator_ids, 2], [-1] * 16 + [-0.5] * 4
+            sim.model.actuator_biasprm[sim.actuator_ids, 2], -KD
         )
         np.testing.assert_array_equal(sim.data.qpos[sim.q_indices], DEFAULT_Q)
 

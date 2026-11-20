@@ -1,5 +1,4 @@
 {
-  "policy": "../model/policy.onnx",
   "upper_address": "192.168.51.3:50054",
   "lower_address": "192.168.51.3:50053",
   "rpc_timeout_s": 0.02,

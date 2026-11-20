@@ -31,6 +31,7 @@ from e1_wheel.wheel_config import (
     LEG_JOINT_NAMES,
     OBSERVATION_SIZE,
     POLICY_DT,
+    POLICY_PATH,
     VELOCITY_LIMIT,
     action_targets,
     build_observation,
@@ -38,7 +39,7 @@ from e1_wheel.wheel_config import (
 )
 
 LEG_COUNT = len(LEG_JOINT_NAMES)
-CONFIG_PATH = Path(__file__).with_name("config.json")
+CONFIG_PATH = Path(__file__).with_name("robot_config.json")
 
 
 class MotorService:
@@ -227,7 +228,8 @@ def main():
         if not 0.0 < config["stand_duration_s"] < math.inf:
             raise ValueError("stand_duration_s must be a positive finite number")
 
-    policy_path = args.config.parent / config["policy"]
+    policy_override = config.get("policy")
+    policy_path = args.config.parent / policy_override if policy_override else POLICY_PATH
     options = ort.SessionOptions()
     options.intra_op_num_threads = 1
     session = ort.InferenceSession(
