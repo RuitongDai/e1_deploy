@@ -9,7 +9,7 @@ from pathlib import Path
 import numpy as np
 
 ROOT = Path(__file__).resolve().parent
-POLICY_PATH = ROOT / "model/policy.onnx"
+POLICY_PATH = ROOT / "model_rough/policy.onnx"
 URDF_PATH = ROOT / "robot/E1_DOG_v2/E1_DOG_wheel_no_head.urdf"
 SCENE_PATH = ROOT / "robot/E1_DOG_v2/scene.xml"
 
@@ -33,18 +33,18 @@ BASE_HEIGHT = 0.46
 DEFAULT_Q = np.array([0.5, 0.0, 0.0, -1.0] * 4 + [0.0] * 4, dtype=np.float64)
 ACTION_SCALE = np.array([0.25, 0.125, 0.125, 0.25] * 4 + [5.0] * 4)
 KP = np.array([
-    [60.0, 40.0, 30.0, 60.0],  # 前右腿 FR
-    [60.0, 40.0, 30.0, 60.0],  # 前左腿 FL
-    [60.0, 40.0, 30.0, 60.0],  # 后右腿 RR
-    [60.0, 40.0, 30.0, 60.0],  # 后左腿 RL
+    [60.0, 60.0, 30.0, 60.0],  # 前右腿 FR
+    [60.0, 60.0, 30.0, 60.0],  # 前左腿 FL
+    [60.0, 60.0, 30.0, 60.0],  # 后右腿 RR
+    [60.0, 60.0, 30.0, 60.0],  # 后左腿 RL
     [0.0, 0.0, 0.0, 0.0],  # 四个轮子
 ]).reshape(-1)
 
 KD = np.array([
-    [3.0, 2.0, 1.5, 3.0],  # 前右腿 FR
-    [3.0, 2.0, 1.5, 3.0],  # 前左腿 FL
-    [3.0, 2.0, 1.5, 3.0],  # 后右腿 RR
-    [3.0, 2.0, 1.5, 3.0],  # 后左腿 RL
+    [3.0, 3.0, 1.5, 3.0],  # 前右腿 FR
+    [3.0, 3.0, 1.5, 3.0],  # 前左腿 FL
+    [3.0, 3.0, 1.5, 3.0],  # 后右腿 RR
+    [3.0, 3.0, 1.5, 3.0],  # 后左腿 RL
     [0.5, 0.5, 0.5, 0.5],  # 四个轮子
 ]).reshape(-1)
 EFFORT_LIMIT = np.array([60.0, 36.0, 15.0, 60.0] * 4 + [60.0] * 4)

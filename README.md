@@ -56,7 +56,7 @@ python e1_wheel/scripts/deploy_real_e1_wheel.py
 
 - [wheel_config.py](e1_wheel/wheel_config.py) 保存两边共用的默认模型路径、关节顺序、观测缩放、动作换算、默认站姿和 Kp/Kd。
 - [robot_config.json](e1_wheel/scripts/robot_config.json) 保存真机地址、端口、手柄参数、关节方向、零偏和 IMU 对齐。关节配置每行依次是服务名、SDK 电机名、方向和零偏（rad）。
-- `e1_wheel/model/` 保存当前的 `policy.onnx` 和 `policy.onnx.data`。换策略时，从同一次训练导出目录成对复制两个文件并保留原名。ONNX Runtime 会根据模型内部的引用加载同目录的外部权重，替换后需要重启运行进程。
+- `e1_wheel/model_rough/` 保存当前的 `policy.onnx` 和 `policy.onnx.data`。换策略时，从同一次训练导出目录成对复制两个文件并保留原名。ONNX Runtime 会根据模型内部的引用加载同目录的外部权重，替换后需要重启运行进程。
 - 仿真可用 `--policy /path/to/policy.onnx` 临时指定模型。实机可用 `--config` 指定另一份 JSON，该文件可以包含可选的 `policy` 字段。相对模型路径以该 JSON 所在目录为基准。
 - `e1_wheel/robot/` 保存 URDF、网格和 MuJoCo 场景。`e1_wheel/build_mujoco_scene.py` 用于从训练 URDF 重建场景。
 
