@@ -9,7 +9,7 @@ from pathlib import Path
 import numpy as np
 
 ROOT = Path(__file__).resolve().parent
-POLICY_PATH = ROOT / "model_rough/policy.onnx"
+POLICY_PATH = ROOT / "model_flat/policy.onnx"
 URDF_PATH = ROOT / "robot/E1_DOG_v2/E1_DOG_wheel_no_head.urdf"
 SCENE_PATH = ROOT / "robot/E1_DOG_v2/scene.xml"
 
