@@ -22,7 +22,6 @@ from droidup.api.leg_service_pb2_grpc import LegServiceStub
 from e1_wheel.gamepad import Gamepad
 from e1_wheel.wheel_config import (
     ACTION_SIZE,
-    COMMAND_LIMIT,
     DEFAULT_Q,
     EFFORT_LIMIT,
     JOINT_NAMES,
@@ -36,6 +35,7 @@ from e1_wheel.wheel_config import (
     action_targets,
     build_observation,
     finite_vector,
+    gamepad_command,
     limit_command_rate,
 )
 
@@ -119,17 +119,66 @@ class MotorService:
         self.call(self.command_rpc, command)
 
 
-def read_state(upper, lower, imu_to_body, timeout=None):
-    q, dq = np.empty(ACTION_SIZE), np.empty(ACTION_SIZE)
-    upper.read(q, dq, timeout)
-    imu = lower.read(q, dq, timeout)
+def imu_observation(imu, imu_to_body):
+    """Use the deployment convention: Euler in radians, gyro in rad/s."""
     roll, pitch, _ = finite_vector(imu.imu_euler, 3, "lower IMU Euler")
     gyro = finite_vector(imu.imu_gyro, 3, "lower IMU gyro")
     cos_pitch = math.cos(pitch)
     gravity = np.array(
         [math.sin(pitch), -cos_pitch * math.sin(roll), -cos_pitch * math.cos(roll)]
     )
-    return q, dq, imu_to_body @ gyro, imu_to_body @ gravity
+    return imu_to_body @ gyro, imu_to_body @ gravity
+
+
+def read_state(upper, lower, imu_to_body, timeout=None):
+    q, dq = np.empty(ACTION_SIZE), np.empty(ACTION_SIZE)
+    upper.read(q, dq, timeout)
+    imu = lower.read(q, dq, timeout)
+    gyro, gravity = imu_observation(imu, imu_to_body)
+    return q, dq, gyro, gravity
+
+
+def monitor_imu(config, imu_to_body, duration):
+    """Read only GetLegState; no policy, gamepad or motor commands."""
+    samples, stamps = [], []
+    print(f"[IMU READ ONLY] {config['lower_address']}, {duration:g} seconds, 10 Hz polling")
+    print("[IMU] Euler/gyro units are assumed rad/rad/s, as in deployment; verify with firmware.")
+    print(f"[IMU] imu_to_body={imu_to_body.tolist()}; acc_raw uses firmware units.")
+    started = time.monotonic()
+    last_log = -math.inf
+    with grpc.insecure_channel(config["lower_address"]) as channel:
+        stub = LegServiceStub(channel)
+        while time.monotonic() - started < duration:
+            tick = time.monotonic()
+            try:
+                imu = stub.GetLegState(Empty(), timeout=1.0)
+            except grpc.RpcError as error:
+                raise ConnectionError(f"IMU read failed: {error.code().name}: {error.details()}") from error
+            gyro, gravity = imu_observation(imu, imu_to_body)
+            euler_deg = np.rad2deg(finite_vector(imu.imu_euler, 3, "IMU Euler"))
+            samples.append(np.concatenate((euler_deg[:2], gyro, gravity)))
+            stamps.append(imu.imu_stamp)
+            elapsed = time.monotonic() - started
+            if elapsed - last_log >= 0.5:
+                print(
+                    f"[IMU] t={elapsed:.1f}s stamp={imu.imu_stamp} "
+                    f"euler_raw={np.round(imu.imu_euler, 4).tolist()} "
+                    f"rpy_deg={euler_deg.round(2).tolist()} "
+                    f"gyro_body={gyro.round(4).tolist()} gravity_body={gravity.round(4).tolist()} "
+                    f"acc_raw={np.round(imu.imu_acc, 4).tolist()}",
+                    flush=True,
+                )
+                last_log = elapsed
+            time.sleep(max(0.0, 0.1 - (time.monotonic() - tick)))
+    if samples:
+        samples = np.asarray(samples)
+        print("[IMU SUMMARY] columns=[roll_deg,pitch_deg,wx,wy,wz,gx,gy,gz]; statistics require a stationary robot")
+        print(f"[IMU SUMMARY] mean={samples.mean(axis=0).round(5).tolist()}")
+        print(f"[IMU SUMMARY] std={samples.std(axis=0).round(5).tolist()}")
+        changes = sum(a != b for a, b in zip(stamps, stamps[1:]))
+        print(f"[IMU SUMMARY] frames={len(stamps)}, stamp changes={changes}, first={stamps[0]}, last={stamps[-1]}")
+        if changes == 0 and len(stamps) > 1:
+            print("[IMU] imu_stamp did not change; check whether firmware populates it and whether data is updating.")
 
 
 def infer(session, input_name, observation):
@@ -137,14 +186,14 @@ def infer(session, input_name, observation):
     return finite_vector(actions[0], ACTION_SIZE, "policy output")
 
 
-def run(upper, lower, gamepad, session, input_name, config, imu_to_body):
-    command_scale = finite_vector(config["command_scale"], 3, "command scale")
+def run(upper, lower, gamepad, session, input_name, config, imu_to_body, debug_state=False):
     stand_duration = config["stand_duration_s"]
     neutral = DEFAULT_Q.copy()
     command = np.zeros(3)
     previous_action = np.zeros(ACTION_SIZE)
     state = "idle"
     wrote = False
+    last_debug = -math.inf
     gamepad.read()  # Require a fresh button press after launch.
     print("[STATE] IDLE. X=stand, A=inference after standby, Y=damping, B=exit")
     try:
@@ -178,7 +227,7 @@ def run(upper, lower, gamepad, session, input_name, config, imu_to_body):
                     state = "standby"
                     print("[STATE] STANDBY")
             elif state == "inference":
-                target_command = np.clip(stick * command_scale, -COMMAND_LIMIT, COMMAND_LIMIT)
+                target_command = gamepad_command(stick)
                 command = limit_command_rate(command, target_command)
                 obs = build_observation(gyro, gravity, command, q, dq, previous_action)
                 previous_action = infer(session, input_name, obs)
@@ -187,6 +236,18 @@ def run(upper, lower, gamepad, session, input_name, config, imu_to_body):
                 targets[LEG_COUNT:] = np.clip(targets[LEG_COUNT:], -wheel_limit, wheel_limit)
             elif state == "damping":
                 targets[:LEG_COUNT] = q[:LEG_COUNT]
+
+            if debug_state and tick - last_debug >= 0.5:
+                applied_command = command if state == "inference" else np.zeros(3)
+                print(
+                    f"[DEBUG] state={state} stick={stick.round(4).tolist()} "
+                    f"cmd={applied_command.round(4).tolist()} "
+                    f"gyro={gyro.round(4).tolist()} gravity={gravity.round(4).tolist()} "
+                    f"wheel_target={targets[LEG_COUNT:].round(4).tolist()} "
+                    f"wheel_actual={dq[LEG_COUNT:].round(4).tolist()}",
+                    flush=True,
+                )
+                last_debug = tick
 
             if state != "idle":
                 damping = state == "damping"
@@ -211,13 +272,26 @@ def run(upper, lower, gamepad, session, input_name, config, imu_to_body):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--config", type=Path, default=CONFIG_PATH)
-    parser.add_argument(
+    read_mode = parser.add_mutually_exclusive_group()
+    read_mode.add_argument(
         "--read-only",
         action="store_true",
         help="Read one joint/IMU frame and run inference without a gamepad or motor writes",
     )
+    read_mode.add_argument(
+        "--monitor-imu", action="store_true",
+        help="Continuously read lower IMU only; no policy, gamepad or motor writes",
+    )
+    parser.add_argument("--duration", type=float, default=10.0, help="IMU monitoring seconds (default 10)")
+    parser.add_argument("--debug-state", action="store_true", help="Log command, IMU and wheel speeds at 2 Hz during normal motor control")
     args = parser.parse_args()
+    if not 0.0 < args.duration < math.inf:
+        parser.error("--duration must be positive and finite")
     config = json.loads(args.config.read_text(encoding="utf-8"))
+    imu_to_body = np.asarray(config["imu_to_body"], dtype=float)
+    if args.monitor_imu:
+        monitor_imu(config, imu_to_body, args.duration)
+        return
     if not args.read_only:
         if config["wheel_mode"] is None:
             raise ValueError("Set wheel_mode from the E1 Wheel firmware protocol before enabling motor writes")
@@ -243,7 +317,6 @@ def main():
     infer(session, model_input.name, np.zeros(OBSERVATION_SIZE, dtype=np.float32))
     print(f"[ONNX] {policy_path.resolve()} ({OBSERVATION_SIZE} -> {ACTION_SIZE})")
 
-    imu_to_body = np.asarray(config["imu_to_body"], dtype=float)
     with ExitStack() as stack:
         upper = MotorService("upper", ArmServiceStub, "Arm", config, stack)
         lower = MotorService("lower", LegServiceStub, "Leg", config, stack)
@@ -256,7 +329,7 @@ def main():
             print(f"[READ ONLY] action={actions.round(3)}")
         else:
             gamepad = stack.enter_context(Gamepad(config["gamepad_index"]))
-            run(upper, lower, gamepad, session, model_input.name, config, imu_to_body)
+            run(upper, lower, gamepad, session, model_input.name, config, imu_to_body, args.debug_state)
 
 
 if __name__ == "__main__":

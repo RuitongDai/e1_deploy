@@ -9,7 +9,7 @@ from pathlib import Path
 import numpy as np
 
 ROOT = Path(__file__).resolve().parent
-POLICY_PATH = ROOT / "model_flat/policy_1000.onnx"
+POLICY_PATH = ROOT / "model_flat/policy_4800.onnx"
 URDF_PATH = ROOT / "robot/E1_DOG_v2/E1_DOG_wheel_no_head.urdf"
 SCENE_PATH = ROOT / "robot/E1_DOG_v2/scene.xml"
 
@@ -49,10 +49,11 @@ KD = np.array([
 ]).reshape(-1)
 EFFORT_LIMIT = np.array([60.0, 36.0, 15.0, 60.0] * 4 + [60.0] * 4)
 VELOCITY_LIMIT = np.array([13.09, 13.61, 15.71, 13.09] * 4 + [13.09] * 4)
-COMMAND_LIMIT = np.ones(3)
+# Full-stick velocity commands [vx (m/s), vy (m/s), wz (rad/s)] for sim and hardware.
+COMMAND_LIMIT = np.array([2.0, 1.0, 1.5])
 COMMAND_RATE_LIMIT_ENABLED = False
 # Per-second command changes for vx, vy (m/s²) and wz (rad/s²).
-COMMAND_ACCEL_LIMIT = np.array([100, 100, 100])
+COMMAND_ACCEL_LIMIT = np.array([1.0,0.5, 1.5])
 COMMAND_DECEL_LIMIT = np.array([2.0, 2.0, 2.0])
 
 
@@ -75,6 +76,14 @@ def finite_vector(value, size: int, label: str) -> np.ndarray:
             f"Invalid {label}: expected {size} finite values, got {result.shape}"
         )
     return result
+
+
+def gamepad_command(stick) -> np.ndarray:
+    """Map normalized joystick axes to the shared velocity command range."""
+    limits = finite_vector(COMMAND_LIMIT, 3, "command limits")
+    if np.any(limits < 0.0):
+        raise ValueError("Command limits must be non-negative")
+    return np.clip(finite_vector(stick, 3, "gamepad input"), -1.0, 1.0) * limits
 
 
 def build_observation(

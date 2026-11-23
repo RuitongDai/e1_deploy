@@ -174,7 +174,7 @@ class SimulatorTests(unittest.TestCase):
     def test_gamepad_command_ramps_up_reverses_and_returns_to_zero(self):
         sim = self.sim
         target = np.array([0.5, -0.2, 0.3])
-        self.gamepad.command[:] = target
+        self.gamepad.command[:] = target / wheel_config.COMMAND_LIMIT
         sim.state = ControlState.INFERENCE
         sim.update()
         accel_step = wheel_config.COMMAND_ACCEL_LIMIT * POLICY_DT
@@ -188,7 +188,7 @@ class SimulatorTests(unittest.TestCase):
             sim.update()
         np.testing.assert_allclose(sim.observation()[6:9], target)
 
-        self.gamepad.command[:] = -target
+        self.gamepad.command[:] = -target / wheel_config.COMMAND_LIMIT
         sim.update()
         expected = target + np.clip(-target, -decel_step, decel_step)
         np.testing.assert_allclose(sim.observation()[6:9], expected)
@@ -213,15 +213,25 @@ class SimulatorTests(unittest.TestCase):
         sim.state = ControlState.INFERENCE
         self.gamepad.command[2] = 0.5
         sim.update()
-        np.testing.assert_array_equal(sim.observation()[6:9], [0.0, 0.0, 0.5])
+        np.testing.assert_array_equal(sim.observation()[6:9], [0.0, 0.0, 0.75])
 
         self.gamepad.command[2] = -0.5
         sim.update()
-        np.testing.assert_array_equal(sim.observation()[6:9], [0.0, 0.0, -0.5])
+        np.testing.assert_array_equal(sim.observation()[6:9], [0.0, 0.0, -0.75])
 
         self.gamepad.command.fill(0.0)
         sim.update()
         np.testing.assert_array_equal(sim.observation()[6:9], 0.0)
+
+    @patch.object(wheel_config, "COMMAND_RATE_LIMIT_ENABLED", False)
+    def test_full_stick_reaches_configured_velocity_limits(self):
+        self.sim.state = ControlState.INFERENCE
+        for stick in ([1, 1, 1], [-1, -1, -1], [.5, -.5, .5], [0, 0, 0]):
+            self.gamepad.command[:] = stick
+            self.sim.update()
+            np.testing.assert_allclose(
+                self.sim.observation()[6:9], np.array(stick) * wheel_config.COMMAND_LIMIT
+            )
 
     def test_unplug_stops_inference_without_reusing_command(self):
         sim = self.sim

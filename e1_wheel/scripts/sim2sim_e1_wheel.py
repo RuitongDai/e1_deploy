@@ -28,7 +28,6 @@ from e1_wheel.gamepad import Gamepad, GamepadDisconnected, monitor
 from e1_wheel.wheel_config import (
     ACTION_SIZE,
     BASE_HEIGHT,
-    COMMAND_LIMIT,
     DECIMATION,
     DEFAULT_Q,
     EFFORT_LIMIT,
@@ -44,6 +43,7 @@ from e1_wheel.wheel_config import (
     action_targets,
     build_observation,
     finite_vector,
+    gamepad_command,
     limit_command_rate,
 )
 
@@ -246,7 +246,7 @@ class WheelSimulation:
             self.state = ControlState.EXIT
             raise
         if self.state is ControlState.INFERENCE:
-            target_command = np.clip(command, -COMMAND_LIMIT, COMMAND_LIMIT)
+            target_command = gamepad_command(command)
             self.command = limit_command_rate(self.command, target_command)
         now = time.monotonic()
         if events or (self.args.gamepad_debug and now - self.last_input_log >= 0.2):
