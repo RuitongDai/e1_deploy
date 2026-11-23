@@ -40,6 +40,7 @@ from e1_wheel.wheel_config import (
     POLICY_PATH,
     SCENE_PATH,
     SUBSTEPS,
+    VELOCITY_LIMIT,
     action_targets,
     build_observation,
     finite_vector,
@@ -304,7 +305,10 @@ class WheelSimulation:
         elif self.state is ControlState.INFERENCE:
             observation = self.observation()
             action = self.policy(observation)
-            self.data.ctrl[self.actuator_ids] = action_targets(action)
+            targets = action_targets(action)
+            # Match the wheel target saturation applied by hardware deployment.
+            targets[16:] = np.clip(targets[16:], -VELOCITY_LIMIT[16:], VELOCITY_LIMIT[16:])
+            self.data.ctrl[self.actuator_ids] = targets
             self.previous_action[:] = action
             self.total_policy_steps += 1
             if self.args.record:

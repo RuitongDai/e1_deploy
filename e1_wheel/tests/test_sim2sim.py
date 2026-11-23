@@ -114,6 +114,16 @@ class SimulatorTests(unittest.TestCase):
         )
         np.testing.assert_array_equal(sim.data.qpos[sim.q_indices], DEFAULT_Q)
 
+    def test_wheel_target_saturation_matches_hardware_and_preserves_raw_action(self):
+        raw_action = np.concatenate((np.zeros(16), [4.0, -4.0, 4.0, -4.0]))
+        self.sim.policy = lambda observation: raw_action.copy()
+        self.sim.state = ControlState.INFERENCE
+        self.sim.update()
+        expected = wheel_config.VELOCITY_LIMIT[16:] * np.array([1, -1, 1, -1])
+        np.testing.assert_array_equal(self.sim.data.ctrl[self.sim.actuator_ids[16:]], expected)
+        np.testing.assert_array_equal(self.sim.previous_action, raw_action)
+        np.testing.assert_array_equal(self.sim.data.ctrl[self.sim.actuator_ids[:16]], DEFAULT_Q[:16])
+
     def test_angular_velocity_uses_link_axes_instead_of_principal_inertia_axes(self):
         sim = self.sim
         # MuJoCo free-joint angular qvel is in the body/link frame. Exercise

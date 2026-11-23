@@ -73,7 +73,8 @@ python e1_wheel/scripts/deploy_real_e1_wheel.py --monitor-imu --duration 10
 ## 配置与策略
 
 - [wheel_config.py](e1_wheel/wheel_config.py) 保存两边共用的默认模型路径、关节顺序、观测缩放、动作换算、默认站姿和 Kp/Kd。
-- 仿真和真机的速度范围统一由 `wheel_config.py` 中的 `COMMAND_LIMIT = np.array([2.0, 1.0, 1.5])` 设置，顺序为前后速度（m/s）、横移速度（m/s）、转向角速度（rad/s）。摇杆归一化输入乘以此数组，所以推满分别得到 ±2 m/s、±1 m/s、±1.5 rad/s，推一半得到对应的一半；修改后需重启脚本。`robot_config.json` 的旧字段 `command_scale` 已移除，自定义 JSON 中若仍保留该字段也不再使用。`COMMAND_RATE_LIMIT_ENABLED` 控制加减速平滑，不改变最终速度范围。
+- 仿真和真机的速度范围统一由 `wheel_config.py` 中的 `COMMAND_LIMIT` 设置，顺序为前后速度（m/s）、横移速度（m/s）、转向角速度（rad/s）。例如设置 `np.array([2.0, 1.0, 1.5])` 时，摇杆推满分别得到 ±2 m/s、±1 m/s、±1.5 rad/s，推一半得到对应的一半；实际范围以文件当前值为准，修改后需重启脚本。`robot_config.json` 的旧字段 `command_scale` 已移除，自定义 JSON 中若仍保留该字段也不再使用。`COMMAND_RATE_LIMIT_ENABLED` 控制加减速平滑，不改变最终速度范围。
+- 仿真和真机都将策略生成的四轮速度目标裁剪到 `VELOCITY_LIMIT[16:]`（当前 ±13.09 rad/s）。194 mm 直径的轮子在该轮速下，纯滚动速度约为 1.27 m/s；2 m/s 的纯滚动需要约 20.6 rad/s。机身速度指令不是实际可达到速度的保证，腿部运动、轮子姿态和滑移也会影响机身速度。提高轮速上限前需确认电机和驱动的实际能力。
 - [robot_config.json](e1_wheel/scripts/robot_config.json) 保存真机地址、端口、手柄参数、关节方向、零偏和 IMU 对齐。关节配置每行依次是服务名、SDK 电机名、方向和零偏（rad）。
 - `e1_wheel/model_rough/` 保存当前的 `policy.onnx` 和 `policy.onnx.data`。换策略时，从同一次训练导出目录成对复制两个文件并保留原名。ONNX Runtime 会根据模型内部的引用加载同目录的外部权重，替换后需要重启运行进程。
 - 仿真可用 `--policy /path/to/policy.onnx` 临时指定模型。实机可用 `--config` 指定另一份 JSON，该文件可以包含可选的 `policy` 字段。相对模型路径以该 JSON 所在目录为基准。

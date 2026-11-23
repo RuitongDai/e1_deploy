@@ -50,7 +50,7 @@ KD = np.array([
 EFFORT_LIMIT = np.array([60.0, 36.0, 15.0, 60.0] * 4 + [60.0] * 4)
 VELOCITY_LIMIT = np.array([13.09, 13.61, 15.71, 13.09] * 4 + [13.09] * 4)
 # Full-stick velocity commands [vx (m/s), vy (m/s), wz (rad/s)] for sim and hardware.
-COMMAND_LIMIT = np.array([2.0, 1.0, 1.5])
+COMMAND_LIMIT = np.array([1.0, 1.0, 1.5])
 COMMAND_RATE_LIMIT_ENABLED = False
 # Per-second command changes for vx, vy (m/s²) and wz (rad/s²).
 COMMAND_ACCEL_LIMIT = np.array([1.0,0.5, 1.5])
